@@ -28,6 +28,64 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+
+    const db=client.db('cityFixerDB');
+    const issuesCollections=db.collection('issues');
+
+    app.post('/issues',async(req,res)=>{
+        const newIssue=req.body;
+        const result=await issuesCollections.insertOne(newIssue);
+        res.send(result);
+    });
+
+    //latest issues
+    app.get('/issues',async(req,res)=>{
+      const {status, priority, category, search}=req.query;
+      let query={};
+
+      if(status){
+        query.status={$in:status.split(',')};
+      };
+      if(priority){
+        query.priority={$in:priority.split(',')};
+      };
+      if(category){
+        query.category={$in:category.split(',')};
+      };
+
+      if(search){
+        query.$or=[
+          {title:{$regex:search,$options:'i'}},
+          {category:{$regex:search,$options:'i'}},
+          {location:{$regex:search,$options:'i'}}
+        ];
+      }
+
+      const cursor=issuesCollections.find(query).sort({_id:-1});
+      const result=(await cursor.toArray());
+      res.send(result);
+    });
+
+    app.patch('/issues/:id',async(req,res)=>{
+        const id=req.params.id;
+        const updatedIssue=req.body;
+        const query={_id:new ObjectId(id)};
+        const update={
+            $set:{
+                status:updatedIssue.status
+            },
+        };
+        const result=await issuesCollections.updateOne(query,update);
+        res.send(result);
+    });
+
+    app.delete('/issues/:id',async(req,res)=>{
+        const id=req.params.id;
+        const filter={_id:new ObjectId(id)};
+        const result=await issuesCollections.deleteOne(filter);
+        res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
