@@ -40,7 +40,7 @@ async function run() {
 
     //latest issues
     app.get('/issues',async(req,res)=>{
-      const {status, priority, category, search}=req.query;
+      const {status, priority, category, search, limit, skip}=req.query;
       let query={};
 
       if(status){
@@ -61,10 +61,16 @@ async function run() {
         ];
       }
 
-      const cursor=issuesCollections.find(query).sort({_id:-1});
+      const cursor=issuesCollections.find(query).limit(Number(limit)).skip(Number(skip)).sort({_id:-1});
       const result=(await cursor.toArray());
       res.send(result);
     });
+
+    //get total issues count for pageinitation
+    app.get('/issues/count',async(req,res)=>{
+      const count=(await issuesCollections.estimatedDocumentCount()).toString();
+      res.send({count});
+    })
 
     app.patch('/issues/:id',async(req,res)=>{
         const id=req.params.id;
@@ -72,12 +78,35 @@ async function run() {
         const query={_id:new ObjectId(id)};
         const update={
             $set:{
-                status:updatedIssue.status
-            },
+                upvotes:updatedIssue.upvotes
+            }
         };
         const result=await issuesCollections.updateOne(query,update);
         res.send(result);
     });
+
+    app.patch('/issues/:id/upvote', async (req, res) => {
+    const { email } = req.body;
+    const id = req.params.id;
+
+    const result = await issuesCollections.updateOne(
+      {
+        _id: new ObjectId(id),
+        upvotedBy: { $ne: email }
+      },
+      {
+        $inc: { upvotes: 1 },
+        $push: { upvotedBy: email }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(409).send({ message: 'Already upvoted' });
+    }
+
+    res.send({ message: 'Upvoted successfully' });
+  });
+
 
     app.delete('/issues/:id',async(req,res)=>{
         const id=req.params.id;
@@ -85,6 +114,7 @@ async function run() {
         const result=await issuesCollections.deleteOne(filter);
         res.send(result);
     });
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
