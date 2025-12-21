@@ -40,8 +40,12 @@ async function run() {
 
     //latest issues
     app.get('/issues',async(req,res)=>{
-      const {status, priority, category, search, limit, skip}=req.query;
+      const {status, priority, category, search, limit, skip, _id}=req.query;
       let query={};
+
+      if(_id){
+        query._id=new ObjectId(_id);
+      }
 
       if(status){
         query.status={$in:status.split(',')};
