@@ -2,6 +2,7 @@ const express=require('express');
 const cors = require('cors');
 require('dotenv').config();
 const app=express()
+const stripe = require('stripe')(process.env.STRIPE_KEY);
 const port= process.env.PORT || 3000
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
@@ -118,6 +119,30 @@ async function run() {
         const result=await issuesCollections.deleteOne(filter);
         res.send(result);
     });
+
+    //payment gateway
+    app.post('/create-checkout-session', async(req,res)=>{
+      const paymentInfo=req.body;
+      const session=await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            // Provide the exact Price ID (for example, price_1234) of the product you want to sell
+            price_data:{
+              currency:'bdt',
+              unit_amount:10000,
+              product_data:{
+                name: paymentInfo.title
+              }
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${process.env.SITE_DOMAIN}?success=true`,
+        cancel_url:`${process.env.SITE_DOMAIN}?cancel=true`
+      });
+      res.redirect(303, session.url);
+    })
     
 
     // Send a ping to confirm a successful connection
