@@ -83,7 +83,7 @@ async function run() {
         const query={_id:new ObjectId(id)};
         const update={
             $set:{
-                upvotes:updatedIssue.upvotes
+                priority:updatedIssue.priority
             }
         };
         const result=await issuesCollections.updateOne(query,update);
@@ -138,10 +138,14 @@ async function run() {
           },
         ],
         mode: 'payment',
-        success_url: `${process.env.SITE_DOMAIN}?success=true`,
-        cancel_url:`${process.env.SITE_DOMAIN}?cancel=true`
+        metadata:{
+            issueID: paymentInfo.issueID
+        },
+        customer_email:paymentInfo.email,
+        success_url: `${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?payment=success`,
+        cancel_url:`${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?cancel=true`
       });
-      res.redirect(303, session.url);
+      res.send({ url: session.url })
     })
     
 
