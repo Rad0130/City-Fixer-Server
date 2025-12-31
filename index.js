@@ -32,6 +32,7 @@ async function run() {
 
     const db=client.db('cityFixerDB');
     const issuesCollections=db.collection('issues');
+    const paymentsCollection=db.collection('payments')
 
     app.post('/issues',async(req,res)=>{
         const newIssue=req.body;
@@ -142,10 +143,29 @@ async function run() {
             issueID: paymentInfo.issueID
         },
         customer_email:paymentInfo.email,
-        success_url: `${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?payment=success`,
-        cancel_url:`${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?cancel=true`
+        success_url: `${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?payment=success&sessionID={CHECKOUT_SESSION_ID}`,
+        cancel_url:`${process.env.SITE_DOMAIN}/details/${paymentInfo.issueID}?payment=cancel`
       });
       res.send({ url: session.url })
+    });
+
+    app.post('/payments', async(req,res)=>{
+      const payment=req.body;
+
+      const paymentInformation={
+        ...payment,
+        issueId:new ObjectId(payment.issueId),
+        createdAt:new Date()
+      };
+
+      const result = await paymentsCollection.insertOne(paymentInformation);
+      res.send(result);
+
+    });
+
+    app.get('/payments', async(req,res)=>{
+      const result= await paymentsCollection.find().sort({createdAt:-1}).toArray();
+      res.send(result);
     })
     
 
