@@ -67,8 +67,26 @@ async function run() {
         ];
       }
 
-      const cursor=issuesCollections.find(query).limit(Number(limit)).skip(Number(skip)).sort({_id:-1});
-      const result=(await cursor.toArray());
+      const result = await issuesCollections.aggregate([
+        { $match: query },
+        {
+          $addFields: {
+            priorityOrder: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$priority', 'High'] }, then: 1 },
+                  { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
+                  { case: { $eq: ['$priority', 'Low'] }, then: 3 }
+                ],
+                default: 4
+              }
+            }
+          }
+        },
+        { $sort: { priorityOrder: 1, _id: -1 } },
+        { $skip: Number(skip) || 0 },
+        { $limit: Number(limit) || 10 }
+      ]).toArray();
       res.send(result);
     });
 
