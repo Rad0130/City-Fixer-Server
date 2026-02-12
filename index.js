@@ -21,6 +21,20 @@ const client = new MongoClient(uri, {
 app.use(cors());
 app.use(express.json());
 
+const getNextTrackingId = async (db) => {
+  const result = await db.collection('counters').findOneAndUpdate(
+    { _id: 'issueTracking' },
+    { $inc: { sequence_value: 1 } },
+    { upsert: true, returnDocument: 'after' }
+  );
+
+  const sequence = result.value.sequence_value;
+  const year = new Date().getFullYear();
+
+  return `CF-${year}-${sequence.toString().padStart(5, '0')}`;
+};
+
+
 app.get('/',(req,res)=>{
     res.send('City Fixer Server is running')
 });
@@ -35,7 +49,11 @@ async function run() {
     const paymentsCollection=db.collection('payments')
 
     app.post('/issues',async(req,res)=>{
-        const newIssue=req.body;
+        const newIssue={
+          ...req.body,
+          trackingId: await getNextTrackingId(db),
+          createdAt:new Date()
+        };
         const result=await issuesCollections.insertOne(newIssue);
         res.send(result);
     });
