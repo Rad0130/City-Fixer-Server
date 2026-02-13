@@ -28,7 +28,7 @@ const getNextTrackingId = async (db) => {
     { upsert: true, returnDocument: 'after' }
   );
 
-  const sequence = result.value.sequence_value;
+  const sequence = result.sequence_value;
   const year = new Date().getFullYear();
 
   return `CF-${year}-${sequence.toString().padStart(5, '0')}`;
@@ -108,23 +108,43 @@ async function run() {
       res.send(result);
     });
 
+    app.get('/issues/resolved', async (req, res) => {
+      const result = await issuesCollections
+        .find({ status: "Resolved" })
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .toArray();
+
+      res.send(result);
+    });
+
+
     //get total issues count for pageinitation
     app.get('/issues/count',async(req,res)=>{
       const count=(await issuesCollections.estimatedDocumentCount()).toString();
       res.send({count});
     })
 
-    app.patch('/issues/:id',async(req,res)=>{
-        const id=req.params.id;
-        const updatedIssue=req.body;
-        const query={_id:new ObjectId(id)};
-        const update={
-            $set:{
-                priority:updatedIssue.priority
+    app.patch('/issues/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        const result = await issuesCollections.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              ...updatedData,
+              updatedAt: new Date()
             }
-        };
-        const result=await issuesCollections.updateOne(query,update);
+          }
+        );
+
         res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Update failed" });
+      }
     });
 
     app.patch('/issues/:id/upvote', async (req, res) => {
