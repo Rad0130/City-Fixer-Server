@@ -318,7 +318,7 @@ async function run() {
                 $switch: {
                   branches: [
                     { case: { $eq: ['$priority', 'High'] }, then: 1 },
-                    { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
+                    { case: { $eq: ['$priority', 'Normal'] }, then: 2 },
                     { case: { $eq: ['$priority', 'Low'] }, then: 3 },
                   ],
                   default: 4,
@@ -610,7 +610,7 @@ async function run() {
     });
 
     await client.db('admin').command({ ping: 1 });
-    console.log('✅ Connected to MongoDB!');
+    console.log('Connected to MongoDB!');
   } finally {
     // keep connection open
   }
@@ -619,5 +619,5 @@ async function run() {
 run().catch(console.dir);
 
 app.listen(port, () => {
-  console.log(`🚀 City Fixer Server running on port: ${port}`);
+  console.log(`City Fixer Server running on port: ${port}`);
 });
