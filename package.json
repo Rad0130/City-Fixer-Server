@@ -12,12 +12,15 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "axios": "^1.15.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.4.0",
     "firebase-admin": "^13.8.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.0.0",
+    "openai": "^6.34.0",
     "stripe": "^20.1.0"
   }
 }

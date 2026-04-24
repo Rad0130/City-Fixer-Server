@@ -7,6 +7,7 @@ const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const admin = require('firebase-admin');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.dm5zycv.mongodb.net/?appName=Cluster0`;
 const client = new MongoClient(uri, {
@@ -15,6 +16,16 @@ const client = new MongoClient(uri, {
 
 app.use(cors());
 app.use(express.json());
+
+const openRouterClient = axios.create({
+  baseURL: 'https://openrouter.ai/api/v1',
+  headers: {
+    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': process.env.SITE_DOMAIN || 'http://localhost:5173',
+    'X-Title': 'CityFix Platform'
+  }
+});
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -74,6 +85,7 @@ const getNextTrackingId = async (db) => {
 app.get('/', (req, res) => res.send('City Fixer Server is running'));
 
 // ── AI Chatbot Route (WORKING with gemini-2.5-flash) ─────────────────────────────────────────
+// ── AI Chatbot Route with Gemini + OpenRouter Fallback ─────────────────────────────────────────
 app.post('/api/chat', verifyToken, async (req, res) => {
   try {
     const { message, context = {} } = req.body;
@@ -84,18 +96,8 @@ app.post('/api/chat', verifyToken, async (req, res) => {
 
     const { userRole = 'citizen', isPremium = false, userName = 'there' } = context;
 
-    // Check if Gemini API key is configured
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY is not configured');
-      return res.status(500).send({ 
-        reply: "The AI assistant is not fully configured yet. Please contact support or try again later. 🙏" 
-      });
-    }
-
-    // ✅ USE THE WORKING MODEL: gemini-2.5-flash
-    const model = genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
-
-    const systemPrompt = `You are the CityFix Assistant, a helpful and friendly AI chatbot for the CityFix platform — a civic issue reporting system that lets citizens report, track, and resolve city infrastructure problems.
+    // System prompt for the AI
+    const systemPrompt = `You are the CityFix Assistant, a helpful and friendly AI chatbot for the CityFix platform — a civic issue reporting system that lets citizens report, track, and resolve city infrastructure problems in Bangladesh.
 
 CURRENT USER INFO:
 - Name: ${userName}
@@ -180,39 +182,101 @@ Citizens can apply to become staff:
 - Optional written feedback can be added
 - Each citizen can only rate a staff member once per issue
 
----
 Important: Keep responses helpful, friendly, and under 200 words.`;
 
-    // Combine system prompt and user message
-    const fullPrompt = `${systemPrompt}\n\nUser question: ${message}\n\nAssistant response:`;
-    
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
+    // Function to call OpenRouter
+    const callOpenRouter = async (userMessage) => {
+      try {
+        const response = await openRouterClient.post('/chat/completions', {
+          model: 'google/gemini-2.0-flash-exp:free', // Free tier model
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 500,
+          temperature: 0.7,
+        });
+        
+        return response.data.choices[0]?.message?.content || null;
+      } catch (err) {
+        console.error('OpenRouter API error:', err.response?.data || err.message);
+        return null;
+      }
+    };
 
-    if (!text || text.trim() === '') {
-      throw new Error('Empty response from Gemini API');
+    // Function to call Gemini
+    const callGemini = async (userMessage) => {
+      try {
+        const model = genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
+        const fullPrompt = `${systemPrompt}\n\nUser question: ${userMessage}\n\nAssistant response:`;
+        const result = await model.generateContent(fullPrompt);
+        const response = await result.response;
+        return response.text();
+      } catch (err) {
+        console.error('Gemini API error:', err.message);
+        return null;
+      }
+    };
+
+    // Try Gemini first, fallback to OpenRouter
+    let reply = await callGemini(message);
+    
+    // If Gemini fails or returns empty, try OpenRouter
+    if (!reply || reply.trim() === '') {
+      console.log('Gemini failed or returned empty, trying OpenRouter...');
+      reply = await callOpenRouter(message);
     }
 
-    res.send({ reply: text.trim() });
+    // If both fail, provide helpful fallback responses
+    if (!reply || reply.trim() === '') {
+      // Check for common question patterns and provide specific answers
+      const lowerMessage = message.toLowerCase();
+      
+      if (lowerMessage.includes('how to report') || lowerMessage.includes('submit issue')) {
+        reply = "📝 To report an issue:\n\n1. Log in to your account\n2. Click '+ Report Issue' on your dashboard\n3. Fill in title, category, location, and description\n4. Upload a photo (optional but helpful)\n5. Click 'Submit'\n\nYou'll receive a tracking ID like CF-2025-00001 to track your issue! 🎯";
+      } 
+      else if (lowerMessage.includes('premium') || lowerMessage.includes('upgrade')) {
+        reply = "⭐ **Premium Plans:**\n\n• Weekly: ৳150/week\n• Monthly: ৳500/month (most popular)\n• Yearly: ৳4,500/year (save 25%)\n\n**Benefits:** Unlimited reports, priority support, and early access to features!\n\nGo to Dashboard → Profile → 'Upgrade to Premium' to subscribe. 💎";
+      }
+      else if (lowerMessage.includes('track') || lowerMessage.includes('status')) {
+        reply = "🔍 You can track your issues by:\n\n1. Going to your Dashboard\n2. Clicking 'My Issues'\n3. Entering your tracking ID (e.g., CF-2025-00001)\n\nStatuses include: Pending → In Progress → Resolved → Closed.\n\nNeed help? Check your email for updates too! 📧";
+      }
+      else if (lowerMessage.includes('staff') || lowerMessage.includes('become staff')) {
+        reply = "👨‍🔧 To become a staff member:\n\n1. Go to Dashboard → Profile\n2. Scroll to 'Become Staff' section\n3. Write why you want to join\n4. Submit your request\n\nAdmin will review and if approved, you'll get staff access to fix issues in your community! 🌟";
+      }
+      else if (lowerMessage.includes('admin') || lowerMessage.includes('administrator')) {
+        reply = "👑 **Admin Capabilities:**\n\n• View platform statistics\n• Manage all users (verify, ban, role changes)\n• Assign issues to staff\n• Approve staff requests\n• View all payments\n• Delete/edit any content\n\nAdmins have full access to keep CityFix running smoothly! 🔧";
+      }
+      else if (lowerMessage.includes('price') || lowerMessage.includes('cost') || lowerMessage.includes('payment')) {
+        reply = "💳 **Payments on CityFix:**\n\n• Premium plans start from ৳150/week\n• Pay securely via Stripe\n• One-time payment, no auto-renewal\n• Boost priority: ৳100 to mark issue as High Priority\n\nAll payments are secure and processed through Stripe. Questions? Contact support@cityfix.com 💰";
+      }
+      else if (lowerMessage.includes('category') || lowerMessage.includes('type of issue')) {
+        reply = "📂 **Available Categories (28 total):**\n\nRoads & Pavements, Street Lights, Drainage, Garbage & Sanitation, Parks & Gardens, Water Supply, Public Transport, Electricity, Building Violations, Pollution, Public Safety, Healthcare, Education Infrastructure, Digital Services, Animal Control, Fire Safety, Mosquito Control, Noise Pollution, Traffic Signals, Sidewalks, Bridges & Flyovers, Public Toilets, Markets & Hawkers, Solid Waste Management, Sewage System, Playgrounds, Community Centers, and Others.\n\nSelect the one that best matches your issue! 🏙️";
+      }
+      else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+        reply = `Hello ${userName}! 👋 Welcome to CityFix Assistant. I'm here to help you with reporting and tracking civic issues. How can I assist you today? 🏙️`;
+      }
+      else {
+        reply = "I'm here to help with CityFix platform! 🤖 You can ask me about:\n\n• How to report issues 📝\n• Premium membership plans ⭐\n• Tracking your issues 🔍\n• Becoming a staff member 👨‍🔧\n• Platform features and pricing 💰\n\nWhat would you like to know? 😊\n\n*Note: Some AI features are temporarily offline. Contact support@cityfix.com for urgent help.*";
+      }
+    }
+
+    // Ensure response is trimmed
+    reply = reply.trim();
+    
+    if (!reply) {
+      reply = "I'm having technical difficulties right now. Please try again in a moment or check our Help section for common questions! 🙏\n\nYou can also email support@cityfix.com for immediate assistance.";
+    }
+
+    res.send({ reply });
     
   } catch (err) {
-    console.error('Chat error details:', err);
+    console.error('Chat route error:', err);
     
-    // Check for specific Gemini API errors
-    let errorMessage = "I'm having a bit of trouble right now. Please try again in a moment, or check the Help section in the platform for common questions! 🙏\n\nIf the problem persists, please contact support at support@cityfix.com.";
-    
-    if (err.message?.includes('API key')) {
-      errorMessage = "The AI service configuration is being updated. Please try again in a few minutes. 🙏";
-    } else if (err.message?.includes('quota')) {
-      errorMessage = "The AI assistant has reached its daily limit. Please try again tomorrow! 🌙";
-    } else if (err.message?.includes('safety')) {
-      errorMessage = "I can't answer that question. Please ask something else about the CityFix platform! 😊";
-    } else if (err.message?.includes('429')) {
-      errorMessage = "The AI assistant is busy right now. Please wait a moment and try again! ⏳";
-    }
-    
-    res.status(500).send({ reply: errorMessage });
+    // Provide a graceful fallback for any unexpected errors
+    res.status(500).send({ 
+      reply: "I'm temporarily unavailable. Please try again in a few minutes, or check the Help section on our platform!\n\nFor urgent issues, please contact support@cityfix.com 📧" 
+    });
   }
 });
 
@@ -295,16 +359,38 @@ async function run() {
       res.send(await usersCol.updateOne({ email: req.params.email }, { $set: { isBlocked: req.body.isBlocked } }));
     });
 
-    // Admin: verify/unverify user email
+    // Admin: verify/unverify user email (syncs with Firebase)
     app.patch('/users/:email/verify', verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { isEmailVerified } = req.body;
+        const email = req.params.email;
+        
+        // Update MongoDB
         const result = await usersCol.updateOne(
-          { email: req.params.email },
+          { email },
           { $set: { isEmailVerified: !!isEmailVerified } }
         );
-        res.send({ message: isEmailVerified ? 'User email verified' : 'Verification removed', result });
-      } catch { res.status(500).send({ message: 'Failed' }); }
+        
+        // Also update Firebase user's emailVerified status
+        try {
+          const firebaseUser = await admin.auth().getUserByEmail(email);
+          await admin.auth().updateUser(firebaseUser.uid, {
+            emailVerified: !!isEmailVerified
+          });
+          console.log(`Firebase user ${email} emailVerified set to ${!!isEmailVerified}`);
+        } catch (firebaseErr) {
+          console.error('Failed to update Firebase user:', firebaseErr.message);
+          // Don't fail the request if Firebase update fails, just log it
+        }
+        
+        res.send({ 
+          message: isEmailVerified ? 'User email verified' : 'Verification removed',
+          result 
+        });
+      } catch (err) { 
+        console.error('Verification error:', err);
+        res.status(500).send({ message: 'Failed to update verification status' });
+      }
     });
 
     // Role change — body-based (Make Staff, Remove Staff)
@@ -769,33 +855,73 @@ async function run() {
       try {
         const email = req.user.email;
         const { sessionId } = req.body;
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        if (session.payment_status !== 'paid')
-          return res.status(400).send({ message: 'Payment not confirmed' });
-        if (session.customer_email !== email)
-          return res.status(403).send({ message: 'Email mismatch' });
-
-        const existingPayment = await paymentsCol.findOne({ transactionId: session.payment_intent });
-        if (!existingPayment) {
-          const user = await usersCol.findOne({ email });
-          await paymentsCol.insertOne({
-            email,
-            userName: user?.name || '',
-            userPhoto: user?.photo || '',
-            amount: session.amount_total / 100,
-            transactionId: session.payment_intent,
-            purpose: `Premium — ${(session.metadata?.plan || 'monthly').charAt(0).toUpperCase() + (session.metadata?.plan || 'monthly').slice(1)} Plan`,
-            type: 'premium',
-            plan: session.metadata?.plan || 'monthly',
-            createdAt: new Date(),
-          });
+        
+        console.log('Premium upgrade request for:', email, 'sessionId:', sessionId);
+        
+        if (!sessionId) {
+          return res.status(400).json({ message: 'Session ID required', success: false });
         }
-
-        await usersCol.updateOne({ email }, {
-          $set: { isPremium: true, premiumSince: new Date(), premiumPlan: session.metadata?.plan || 'monthly' },
+        
+        // Check if this session was already processed
+        const existingRecord = await paymentsCol.findOne({ stripeSessionId: sessionId });
+        if (existingRecord) {
+          console.log('Session already processed:', sessionId);
+          // Still make sure user is marked as premium
+          await usersCol.updateOne(
+            { email }, 
+            { $set: { isPremium: true, premiumSince: new Date() } }
+          );
+          return res.json({ message: 'Premium already activated', success: true, alreadyProcessed: true });
+        }
+        
+        // Retrieve the Stripe session
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        console.log('Stripe session status:', session.payment_status);
+        
+        if (session.payment_status !== 'paid') {
+          return res.status(400).json({ message: 'Payment not confirmed', success: false });
+        }
+        
+        if (session.customer_email !== email) {
+          return res.status(403).json({ message: 'Email mismatch', success: false });
+        }
+        
+        // Get user info
+        const user = await usersCol.findOne({ email });
+        
+        // Save payment record
+        await paymentsCol.insertOne({
+          email,
+          userName: user?.name || '',
+          userPhoto: user?.photo || '',
+          amount: session.amount_total / 100,
+          transactionId: session.payment_intent,
+          stripeSessionId: sessionId,
+          purpose: `Premium — ${(session.metadata?.plan || 'monthly').charAt(0).toUpperCase() + (session.metadata?.plan || 'monthly').slice(1)} Plan`,
+          type: 'premium',
+          plan: session.metadata?.plan || 'monthly',
+          createdAt: new Date(),
         });
-        res.send({ message: 'Premium activated' });
-      } catch (err) { res.status(500).send({ message: err.message }); }
+        
+        // Update user premium status
+        await usersCol.updateOne(
+          { email }, 
+          { $set: { isPremium: true, premiumSince: new Date(), premiumPlan: session.metadata?.plan || 'monthly' } }
+        );
+        
+        console.log('Premium activated for:', email);
+        
+        // Return success
+        res.json({ 
+          message: 'Premium activated successfully', 
+          success: true,
+          premium: true,
+          plan: session.metadata?.plan || 'monthly'
+        });
+      } catch (err) { 
+        console.error('Premium activation error:', err);
+        res.status(500).json({ message: err.message, success: false }); 
+      }
     });
 
     app.get('/payments/my', verifyToken, async (req, res) => {
