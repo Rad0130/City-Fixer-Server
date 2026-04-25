@@ -84,7 +84,8 @@ const getNextTrackingId = async (db) => {
 
 app.get('/', (req, res) => res.send('City Fixer Server is running'));
 
-// ── AI Chatbot Route (WORKING with gemini-2.5-flash) ─────────────────────────────────────────
+// ── AI Chatbot Route (WORKING with gemini-2.5-flash) 
+
 // ── AI Chatbot Route with Gemini + OpenRouter Fallback ─────────────────────────────────────────
 app.post('/api/chat', verifyToken, async (req, res) => {
   try {
@@ -98,6 +99,20 @@ app.post('/api/chat', verifyToken, async (req, res) => {
 
     // System prompt for the AI
     const systemPrompt = `You are the CityFix Assistant, a helpful and friendly AI chatbot for the CityFix platform — a civic issue reporting system that lets citizens report, track, and resolve city infrastructure problems in Bangladesh.
+
+IMPORTANT RULES:
+- Always be friendly and conversational
+- Use emojis appropriately to keep responses engaging
+- Acknowledge greetings naturally (e.g., "How are you?" → "I'm doing great, thanks for asking!")
+- Say "thank you" and "you're welcome" appropriately
+- Be enthusiastic about helping users
+- Keep responses under 200 words
+
+CONVERSATION EXAMPLES:
+- User: "How are you?" → "I'm doing great! Thanks for asking 😊 How can I help you with CityFix today?"
+- User: "Thank you" → "You're very welcome! 🎉 Is there anything else you'd like to know?"
+- User: "Good morning" → "Good morning! ☀️ Ready to help with any civic issues today!"
+- User: "Hello" → "Hello! 👋 Welcome to CityFix Assistant! How can I make your day better?"
 
 CURRENT USER INFO:
 - Name: ${userName}
@@ -182,13 +197,18 @@ Citizens can apply to become staff:
 - Optional written feedback can be added
 - Each citizen can only rate a staff member once per issue
 
+## BOOSTING ISSUES
+- Citizens can pay ৳100 to boost their issue to High Priority
+- Moves issue to top of admin queue
+- Available on issue detail page
+
 Important: Keep responses helpful, friendly, and under 200 words.`;
 
     // Function to call OpenRouter
     const callOpenRouter = async (userMessage) => {
       try {
         const response = await openRouterClient.post('/chat/completions', {
-          model: 'google/gemini-2.0-flash-exp:free', // Free tier model
+          model: 'google/gemini-2.0-flash-exp:free',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
@@ -227,37 +247,105 @@ Important: Keep responses helpful, friendly, and under 200 words.`;
       reply = await callOpenRouter(message);
     }
 
-    // If both fail, provide helpful fallback responses
+    // If both fail, provide comprehensive fallback responses
     if (!reply || reply.trim() === '') {
-      // Check for common question patterns and provide specific answers
       const lowerMessage = message.toLowerCase();
       
-      if (lowerMessage.includes('how to report') || lowerMessage.includes('submit issue')) {
-        reply = "📝 To report an issue:\n\n1. Log in to your account\n2. Click '+ Report Issue' on your dashboard\n3. Fill in title, category, location, and description\n4. Upload a photo (optional but helpful)\n5. Click 'Submit'\n\nYou'll receive a tracking ID like CF-2025-00001 to track your issue! 🎯";
-      } 
-      else if (lowerMessage.includes('premium') || lowerMessage.includes('upgrade')) {
-        reply = "⭐ **Premium Plans:**\n\n• Weekly: ৳150/week\n• Monthly: ৳500/month (most popular)\n• Yearly: ৳4,500/year (save 25%)\n\n**Benefits:** Unlimited reports, priority support, and early access to features!\n\nGo to Dashboard → Profile → 'Upgrade to Premium' to subscribe. 💎";
+      // ============ GREETINGS & CONVERSATIONAL ============
+      if (lowerMessage.match(/^(hi|hello|hey|good morning|good afternoon|good evening)/)) {
+        reply = `👋 Hello ${userName}! Welcome to CityFix Assistant! 😊\n\nI'm here to help you with reporting and tracking civic issues in your community. How can I assist you today?\n\nYou can ask me about:\n• 📝 Reporting issues\n• ⭐ Premium plans\n• 👨‍🔧 Becoming staff\n• 📊 Tracking issues\n• 💳 Payments\n• 🔍 Finding issues\n• ⭐ Rating staff\n\nWhat would you like to know?`;
       }
-      else if (lowerMessage.includes('track') || lowerMessage.includes('status')) {
-        reply = "🔍 You can track your issues by:\n\n1. Going to your Dashboard\n2. Clicking 'My Issues'\n3. Entering your tracking ID (e.g., CF-2025-00001)\n\nStatuses include: Pending → In Progress → Resolved → Closed.\n\nNeed help? Check your email for updates too! 📧";
+      else if (lowerMessage.includes('how are you') || lowerMessage.includes('how are u')) {
+        reply = `I'm doing great, ${userName}! 🤖 Thanks for asking! I'm fully operational and ready to help you with CityFix platform.\n\nHow can I assist you today? 😊`;
       }
-      else if (lowerMessage.includes('staff') || lowerMessage.includes('become staff')) {
-        reply = "👨‍🔧 To become a staff member:\n\n1. Go to Dashboard → Profile\n2. Scroll to 'Become Staff' section\n3. Write why you want to join\n4. Submit your request\n\nAdmin will review and if approved, you'll get staff access to fix issues in your community! 🌟";
+      else if (lowerMessage.includes('i am fine') || lowerMessage.includes('i\'m fine') || lowerMessage.includes('doing good')) {
+        reply = `Glad to hear that, ${userName}! 😊 Is there anything I can help you with on CityFix today?`;
+      }
+      else if (lowerMessage.includes('thank') || lowerMessage.includes('thanks')) {
+        reply = `You're very welcome, ${userName}! 🎉 I'm glad I could help. Is there anything else you'd like to know about CityFix?`;
+      }
+      else if (lowerMessage.includes('good') && (lowerMessage.includes('morning') || lowerMessage.includes('afternoon') || lowerMessage.includes('evening'))) {
+        reply = `Good ${lowerMessage.includes('morning') ? 'morning' : lowerMessage.includes('afternoon') ? 'afternoon' : 'evening'}, ${userName}! ☀️ How can I help you with CityFix today?`;
+      }
+      
+      // ============ ABOUT CITYFIX & TRUST ============
+      else if (lowerMessage.includes('trust') || lowerMessage.includes('reliable') || lowerMessage.includes('safe')) {
+        reply = `🔒 **Can you trust CityFix?** Absolutely!\n\nCityFix is a legitimate civic issue reporting platform designed with transparency and accountability:\n\n✅ **Secure Payments** — Stripe, world-class secure payment processor\n✅ **Transparent Tracking** — Every issue gets unique tracking ID (CF-2025-00001)\n✅ **Accountability** — Issues assigned to staff who update status in real-time\n✅ **Verified Users** — Email verification ensures genuine reporters\n✅ **Community Rated** — Citizens rate staff performance after resolution\n✅ **Admin Oversight** — Platform managed by administrators ensuring quality\n\nYour data is protected, payments are secure, we're committed to improving your community! 🏙️`;
+      }
+      else if (lowerMessage.includes('what is cityfix') || lowerMessage.includes('tell me about cityfix') || lowerMessage.includes('about cityfix')) {
+        reply = `🏙️ **What is CityFix?**\n\nCityFix is a **civic issue reporting platform** helping citizens report, track, and resolve infrastructure problems in their community.\n\n**How it works:**\n1️⃣ **Report** — Citizens log issues (potholes, broken lights, garbage, etc.) with photos and location\n2️⃣ **Track** — Each issue gets unique tracking ID and status updates\n3️⃣ **Assign** — Admins assign issues to field staff\n4️⃣ **Resolve** — Staff fix issue and update status\n5️⃣ **Rate** — Citizens rate staff performance\n\n**Problems we solve:** 🛣️ Road damage, 💡 Street lights, 🗑️ Garbage collection, 💧 Water logging, 🌳 Parks maintenance, 🚦 Traffic signals, and 28+ categories!\n\nTogether, we build better communities! 🌟`;
+      }
+      else if (lowerMessage.includes('how does cityfix work') || lowerMessage.includes('how does it work')) {
+        reply = `⚙️ **How CityFix Works - Step by Step:**\n\n**For Citizens:**\n📝 **Report** — Login → "+ Report Issue" → Fill details → Add photo → Submit → Get tracking ID\n🔍 **Track** — Dashboard → My Issues → See real-time status updates\n⭐ **Rate** — After issue resolved, rate staff 1-5 stars\n💎 **Premium** — Upgrade for unlimited reports (weekly/monthly/yearly)\n\n**For Staff:**\n🛠️ Receive assigned issues → Update status (Pending → In Progress → Resolved → Closed) → Add progress notes\n\n**For Admins:**\n👑 Manage users → Assign issues → Approve staff requests → View payments\n\nIssues flow: **Pending → In Progress → Resolved → Closed**\n\nSimple, transparent, and effective! 🎯`;
+      }
+      else if (lowerMessage.includes('how does it solve') || lowerMessage.includes('solve problem')) {
+        reply = `🔧 **How CityFix Solves Community Problems:**\n\n**The Problem:** Citizens face infrastructure issues but don't know who to contact or when problems will be fixed.\n\n**CityFix Solution:**\n✅ **Centralized Reporting** — One platform for all civic issues\n✅ **Transparent Tracking** — Know exactly where your report is\n✅ **Accountability** — Staff assigned and rated by citizens\n✅ **Priority System** — Urgent issues can be "Boosted" to High Priority\n✅ **Community Power** — Upvote issues to highlight what matters most\n✅ **Data-Driven** — Admins see trends and allocate resources effectively\n✅ **Premium Support** — Priority handling for Premium members\n\n**Real Impact:** Faster response times, better resource allocation, and empowered communities! 🌍\n\nEvery report helps make your neighborhood better! 💪`;
+      }
+      else if (lowerMessage.includes('features') || lowerMessage.includes('what can i do')) {
+        reply = `✨ **CityFix Features:**\n\n**For Everyone:**\n• 📝 Report civic issues with photos\n• 🔍 Track issues with unique tracking ID\n• 👍 Upvote important issues\n• 💬 Comment on any issue\n• 📊 View issue timelines\n\n**For Premium Members (from ৳150/week):**\n• ⭐ Unlimited issue reports\n• 🚀 Priority support\n• 🔔 Early access to new features\n\n**For Staff:**\n• 🛠️ View assigned issues\n• 📝 Update issue status\n• 💬 Add progress notes\n\n**For Admins:**\n• 👑 Full platform control\n• 👥 User management\n• 📊 Analytics and insights\n\nWhat feature would you like to know more about? 🎯`;
+      }
+      
+      // ============ REPORTING ISSUES ============
+      else if (lowerMessage.includes('how to report') || lowerMessage.includes('submit issue') || lowerMessage.includes('report an issue')) {
+        reply = `📝 **How to Report an Issue on CityFix:**\n\n**Step-by-Step Guide:**\n\n1️⃣ **Login** to your CityFix account\n2️⃣ Click **"+ Report Issue"** button on your dashboard\n3️⃣ **Fill in the details:**\n   • **Title** — Brief description\n   • **Category** — Choose from 28 options\n   • **Location** — Specific address or landmark\n   • **Priority** — Normal or High (High costs ৳100 to boost)\n   • **Description** — Detailed explanation\n4️⃣ **Upload a photo** (recommended for faster resolution)\n5️⃣ Click **"Submit Issue Report"**\n\n✅ **You'll receive a tracking ID** (e.g., CF-2025-00001) to monitor progress!\n\n**Pro tip:** Clear photos and exact locations help staff resolve issues faster! 📸\n\nNeed premium for unlimited reports? Upgrade from your profile page! ⭐`;
+      }
+      else if (lowerMessage.includes('category') || lowerMessage.includes('categories') || lowerMessage.includes('type of issue')) {
+        reply = `📂 **Available Issue Categories (28 total):**\n\n**Infrastructure:**\n🛣️ Road & Pavement, Pothole, Bridge & Overpass, Footpath & Sidewalk, Building & Construction, Illegal Construction\n\n**Utilities:**\n💧 Water Supply, Water Logging, Drainage & Sewage, Electricity & Lighting, Street Lighting, Gas Leak\n\n**Sanitation:**\n🗑️ Waste & Sanitation, Garbage Collection\n\n**Public Spaces:**\n🌳 Parks & Green Spaces, Public Transport, Traffic & Signals, Market & Public Space\n\n**Health & Safety:**\n🚨 Noise Pollution, Air Pollution, Flooding, Tree Hazard, Vandalism, Public Property Damage, Fire Hazard, Hospital & Health Facility\n\n**Education:**\n📚 School & Education Facility\n\n**Other:**\n📌 Other\n\nChoose the category that best matches your issue for faster routing! 🎯`;
+      }
+      
+      // ============ TRACKING ISSUES ============
+      else if (lowerMessage.includes('track') || lowerMessage.includes('status') || lowerMessage.includes('where is my issue')) {
+        reply = `🔍 **How to Track Your Issues:**\n\n**Method 1 - Dashboard:**\n1️⃣ Go to your **Dashboard**\n2️⃣ Click **"My Issues"**\n3️⃣ See all your reported issues with current status\n\n**Method 2 - Tracking ID:**\nEnter your tracking ID (e.g., CF-2025-00001) to see specific issue details\n\n**Issue Status Meanings:**\n📋 **Pending** — Just submitted, waiting for admin review\n⚙️ **In Progress** — Assigned to staff, being worked on\n✅ **Resolved** — Issue has been fixed\n🔒 **Closed** — Fully completed and verified\n❌ **Rejected** — Invalid or out of scope\n\n**Timeline:** Click "View" on any issue to see complete history including who updated it and when!\n\nNeed updates? Check your email or the platform regularly! 📧`;
+      }
+      
+      // ============ PREMIUM PLANS ============
+      else if (lowerMessage.includes('premium') || lowerMessage.includes('upgrade') || lowerMessage.includes('membership')) {
+        reply = `⭐ **CityFix Premium Plans**\n\n**One-time payment, no auto-renewal:**\n\n• **Weekly** — ৳150/week\n  Good for short-term use\n\n• **Monthly** — ৳500/month  ← Most Popular!\n  Best value for regular users\n\n• **Yearly** — ৳4,500/year  ← Save 25%!\n  Best deal with exclusive profile badge\n\n**Premium Benefits:**\n✅ **Unlimited issue reports** (Free plan: only 3 total)\n✅ **Priority support** — Your issues get faster attention\n✅ **Early access** — New features first\n✅ **Profile badge** — Show you're a supporter (Yearly plan)\n\n**How to Upgrade:**\nDashboard → Profile → "Upgrade to Premium" → Select plan → Pay securely via Stripe\n\n**Questions?** Ask me about payment security or plan details! 💳`;
+      }
+      else if (lowerMessage.includes('payment') || lowerMessage.includes('pay') || lowerMessage.includes('cost') || lowerMessage.includes('price')) {
+        reply = `💳 **Payments on CityFix:**\n\n**Secure Payments via Stripe** 🔒\n• Industry-leading security\n• No credit card details stored on our servers\n• SSL encrypted transactions\n\n**What You Can Pay For:**\n\n**1. Boost Priority** — ৳100 one-time\n   • Moves issue to "High" priority\n   • Puts issue at top of admin queue\n   • Available on any issue detail page\n\n**2. Premium Membership** — One-time payment, no renewal\n   • Weekly: ৳150\n   • Monthly: ৳500 (Most Popular)\n   • Yearly: ৳4,500 (Save 25%)\n   • Benefits: Unlimited reports + Priority support\n\n**How to Pay:**\n1️⃣ Dashboard → Profile\n2️⃣ Click "Upgrade to Premium" or "Boost"\n3️⃣ Select plan/option\n4️⃣ Complete payment via Stripe\n5️⃣ Instant activation!\n\n**Refund Policy:** Contact support@cityfix.com for issues. All payments are final unless technical error occurs. 💰`;
+      }
+      
+      // ============ STAFF RELATED ============
+      else if (lowerMessage.includes('become staff') || lowerMessage.includes('staff member') || lowerMessage.includes('how to be staff')) {
+        reply = `👨‍🔧 **How to Become a CityFix Staff Member:**\n\n**Eligibility:**\n• Must be a registered citizen\n• No premium required\n• Passion for community service\n\n**Application Process:**\n\n1️⃣ Go to **Dashboard → Profile**\n2️⃣ Scroll to **"Become Staff"** section\n3️⃣ Write your **reason/motivation**\n4️⃣ Click **"Submit Request"**\n5️⃣ Admin reviews your application\n6️⃣ If approved → Role changes to Staff immediately!\n\n**Staff Capabilities:**\n• 🛠️ View assigned issues\n• 📝 Update issue status (Pending → In Progress → Resolved → Closed)\n• 💬 Add progress notes\n• ⭐ Get rated by citizens\n\n**Processing Time:** Usually 24-48 hours for review\n\nReady to make a difference in your community? Apply today! 🌟`;
       }
       else if (lowerMessage.includes('admin') || lowerMessage.includes('administrator')) {
-        reply = "👑 **Admin Capabilities:**\n\n• View platform statistics\n• Manage all users (verify, ban, role changes)\n• Assign issues to staff\n• Approve staff requests\n• View all payments\n• Delete/edit any content\n\nAdmins have full access to keep CityFix running smoothly! 🔧";
+        reply = `👑 **Admin Capabilities - Full Platform Control:**\n\n**Dashboard & Analytics:**\n• 📊 View platform statistics\n• 📈 Track platform performance\n\n**Issue Management:**\n• 📋 View, search, and filter all issues\n• 🛠️ Assign issues to staff members\n• ✅ Resolve or reject any issue\n• 🗑️ Delete inappropriate issues\n\n**User Management:**\n• 👥 View all registered citizens\n• ✅ Verify or unverify email addresses\n• 🚫 Ban/unban users\n\n**Staff Management:**\n• 📋 View all staff with work stats\n• ⭐ See staff ratings from citizens\n• 📝 Assign issues to specific staff\n\n**Payment Management:**\n• 💳 View all platform transactions\n• 📊 Track revenue\n\n**Staff Requests:**\n• 📬 Approve or reject citizen applications\n\nAdmins ensure CityFix runs smoothly and issues are resolved efficiently! 🔧`;
       }
-      else if (lowerMessage.includes('price') || lowerMessage.includes('cost') || lowerMessage.includes('payment')) {
-        reply = "💳 **Payments on CityFix:**\n\n• Premium plans start from ৳150/week\n• Pay securely via Stripe\n• One-time payment, no auto-renewal\n• Boost priority: ৳100 to mark issue as High Priority\n\nAll payments are secure and processed through Stripe. Questions? Contact support@cityfix.com 💰";
+      
+      // ============ UPVOTES & COMMENTS ============
+      else if (lowerMessage.includes('upvote') || lowerMessage.includes('vote')) {
+        reply = `👍 **How Upvoting Works on CityFix:**\n\n**What is Upvoting?**\nUpvoting shows support for issues others care about.\n\n**Rules:**\n✅ Citizens can upvote any issue (except their own)\n✅ Each citizen can upvote an issue only once\n✅ Staff and Admins cannot upvote\n✅ Higher upvotes = More visibility to admins\n\n**Why Upvote?**\n• 🎯 Helps prioritize community concerns\n• 📊 Shows which issues affect the most people\n• 🚀 Affects admin decision-making\n\n**How to Upvote:**\n1️⃣ Go to **All Issues** page\n2️⃣ Find an issue you care about\n3️⃣ Click the **upvote button**\n4️⃣ Watch the count increase!\n\nEvery upvote makes a difference! Make your voice heard! 🗣️`;
       }
-      else if (lowerMessage.includes('category') || lowerMessage.includes('type of issue')) {
-        reply = "📂 **Available Categories (28 total):**\n\nRoads & Pavements, Street Lights, Drainage, Garbage & Sanitation, Parks & Gardens, Water Supply, Public Transport, Electricity, Building Violations, Pollution, Public Safety, Healthcare, Education Infrastructure, Digital Services, Animal Control, Fire Safety, Mosquito Control, Noise Pollution, Traffic Signals, Sidewalks, Bridges & Flyovers, Public Toilets, Markets & Hawkers, Solid Waste Management, Sewage System, Playgrounds, Community Centers, and Others.\n\nSelect the one that best matches your issue! 🏙️";
+      else if (lowerMessage.includes('comment') || lowerMessage.includes('feedback')) {
+        reply = `💬 **Comments & Feedback on CityFix:**\n\n**Who Can Comment?**\n✅ Anyone logged in (Citizens, Staff, Admins)\n✅ Your role badge appears next to your name\n\n**How to Comment:**\n1️⃣ Go to any issue detail page\n2️⃣ Scroll to **"Comments"** section\n3️⃣ Type your comment\n4️⃣ Click **"Post Comment"**\n\n**What Can You Comment On?**\n• 📝 Share additional information\n• 🙏 Thank staff for their work\n• 💡 Suggest solutions\n• ❓ Ask questions\n\n**Comment Moderation:**\n• 🗑️ Issue owners can delete comments on their issues\n• 👑 Admins can delete any comment\n\nKeep comments respectful and helpful! 🤝`;
       }
-      else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-        reply = `Hello ${userName}! 👋 Welcome to CityFix Assistant. I'm here to help you with reporting and tracking civic issues. How can I assist you today? 🏙️`;
+      else if (lowerMessage.includes('rating') || lowerMessage.includes('rate staff')) {
+        reply = `⭐ **Staff Rating System:**\n\n**When Can You Rate?**\nAfter an issue is marked **"Resolved"**\n\n**Who Can Rate?**\nOnly the citizen who **reported** the issue (one rating per issue)\n\n**How to Rate:**\n1️⃣ Go to resolved issue detail page\n2️⃣ Look for **"Rate Staff"** section\n3️⃣ Select **1-5 stars**\n4️⃣ Add optional **written feedback**\n5️⃣ Click **"Submit Rating"**\n\n**Why Rating Matters:**\n• 📊 Helps admins evaluate staff performance\n• 🏆 Recognizes outstanding staff\n• 📈 Drives service improvement\n\nRate fairly based on actual service quality! 🌟`;
       }
+      
+      // ============ BOOSTING ============
+      else if (lowerMessage.includes('boost') || lowerMessage.includes('high priority')) {
+        reply = `🚀 **Boost Your Issue to High Priority!**\n\n**What is Boosting?**\nA paid feature (৳100) that moves your issue to the top of the admin queue with "High Priority" status.\n\n**Why Boost?**\n• 🔥 **Gets faster attention** from admins\n• 📍 **Higher visibility** among all issues\n• ⚡ **Expedited processing**\n\n**How to Boost:**\n1️⃣ Go to your **issue detail page**\n2️⃣ Look for **"Boost Priority — ৳100"** button\n3️⃣ Click to proceed with Stripe payment\n4️⃣ Complete secure payment\n5️⃣ Issue priority changes to **High** instantly!\n\n**Important Notes:**\n• ✅ Can only boost your own issues\n• ⏰ Works best for urgent/time-sensitive problems\n• 💰 One-time payment, no subscription\n• 🔒 Payment processed securely via Stripe\n\nMake your voice heard faster! 🎯`;
+      }
+      
+      // ============ TROUBLESHOOTING ============
+      else if (lowerMessage.includes('can\'t report') || lowerMessage.includes('cannot report') || lowerMessage.includes('limit reached')) {
+        reply = `⚠️ **Can't Report an Issue? Here's Why:**\n\n**Common Reasons:**\n\n1️⃣ **Free Limit Reached** (Most Common)\n   • Free plan = Only 3 total reports\n   • Solution: **Upgrade to Premium** (from ৳150/week)\n\n2️⃣ **Account Blocked**\n   • You may have been blocked by an admin\n   • Solution: Contact support@cityfix.com\n\n3️⃣ **Not Logged In**\n   • Need to be logged in to report issues\n   • Solution: Login or create an account\n\n4️⃣ **Missing Required Fields**\n   • Title, category, and location are required\n   • Make sure all fields are filled\n\n**Still having issues?** Contact support@cityfix.com\n\n**Premium Upgrade:** Dashboard → Profile → "Upgrade to Premium" → Get unlimited reports! ⭐`;
+      }
+      else if (lowerMessage.includes('login') || lowerMessage.includes('sign in') || lowerMessage.includes('account')) {
+        reply = `🔐 **Account & Login Help:**\n\n**Creating an Account:**\n1️⃣ Click **"Register"** on the homepage\n2️⃣ Enter email and password\n3️⃣ Verify your email (check inbox)\n4️⃣ Complete profile setup\n\n**Login Issues?**\n• **Forgot Password?** Click "Forgot Password" on login page\n• **Email not verified?** Check your spam folder\n• **Account blocked?** Contact support\n\n**Account Features:**\n• 📝 Update profile photo (upload directly)\n• 👤 Change display name\n• 🔒 Secure Firebase authentication\n• 📧 Email verification for security\n\n**Profile Management:**\n• Dashboard → Profile\n• Update personal info\n• Upgrade to Premium\n• Apply for Staff role\n\nNeed help? support@cityfix.com 🔒`;
+      }
+      
+      // ============ CONTACT & SUPPORT ============
+      else if (lowerMessage.includes('contact') || lowerMessage.includes('support') || lowerMessage.includes('help')) {
+        reply = `📞 **Contact & Support:**\n\n**Platform Support:**\n📧 Email: **support@cityfix.com**\n🕐 Response time: 24-48 hours\n\n**For Urgent Issues (Emergencies):**\n🚨 Call **local emergency services** immediately\n• CityFix is for non-emergency civic issues\n\n**Common Support Topics:**\n• 🔧 Technical issues\n• 💳 Payment problems\n• 👤 Account recovery\n• 📝 Issue reporting help\n• ⭐ Staff rating questions\n\n**Admin Contact:**\n• For business inquiries: admin@cityfix.com\n\nWe're here to help make your community better! 🏙️`;
+      }
+      
+      // ============ DEFAULT ============
       else {
-        reply = "I'm here to help with CityFix platform! 🤖 You can ask me about:\n\n• How to report issues 📝\n• Premium membership plans ⭐\n• Tracking your issues 🔍\n• Becoming a staff member 👨‍🔧\n• Platform features and pricing 💰\n\nWhat would you like to know? 😊\n\n*Note: Some AI features are temporarily offline. Contact support@cityfix.com for urgent help.*";
+        reply = `🤖 Hi ${userName}! I'm CityFix Assistant.\n\nI can help you with:\n\n📝 **Reporting Issues** — How to submit and track problems\n⭐ **Premium Plans** — Unlimited reports from ৳150/week\n👨‍🔧 **Becoming Staff** — Join our field team\n📊 **Tracking Issues** — Monitor your reports\n💳 **Payments** — Secure Stripe payments\n👍 **Upvoting** — Support important issues\n💬 **Comments** — Engage with community\n⭐ **Rating Staff** — Share your feedback\n🔒 **Trust & Safety** — Platform reliability\n🚀 **Boosting** — Get priority attention\n\n**Quick Commands:**\n• "How to report an issue?"\n• "Tell me about Premium"\n• "How to become staff?"\n• "Track my issue"\n• "Is CityFix trustworthy?"\n• "What is CityFix?"\n\nWhat would you like to know? 😊\n\n*Need immediate help? Contact support@cityfix.com*`;
       }
     }
 
@@ -352,6 +440,30 @@ async function run() {
         }));
         res.send(withStats);
       } catch { res.status(500).send({ message: 'Failed' }); }
+    });
+
+    app.get('/users/by-email/:email', verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = await usersCol.findOne({ email });
+        
+        if (!user) {
+          return res.status(404).send({ message: 'User not found' });
+        }
+        
+        // Get issue counts for this user
+        const issueCount = await issuesCol.countDocuments({ reportedBy: email });
+        const resolvedCount = await issuesCol.countDocuments({ reportedBy: email, status: 'Resolved' });
+        
+        res.send({
+          ...user,
+          issueCount,
+          resolvedCount
+        });
+      } catch (err) {
+        console.error('Error fetching user by email:', err);
+        res.status(500).send({ message: 'Failed to fetch user' });
+      }
     });
 
     // Admin: block/unblock user
@@ -599,12 +711,28 @@ async function run() {
       try {
         const email = req.user.email;
         const user = await usersCol.findOne({ email });
+        
         if (user?.isBlocked) return res.status(403).send({ message: 'You are blocked from reporting issues.' });
+        
+        // Check free limit for non-premium users
         if (!user?.isPremium && await issuesCol.countDocuments({ reportedBy: email }) >= 3) {
           return res.status(403).send({ message: 'Free limit reached. Upgrade to Premium to report more.' });
         }
-        const priority = req.body.priority === 'High' ? 'High' : 'Normal';
+        
+        // PREMIUM FEATURE: Auto-boost premium users' issues to High priority
+        let priority = req.body.priority === 'High' ? 'High' : 'Normal';
+        if (user?.isPremium) {
+          priority = 'High'; // Premium users automatically get High priority
+        }
+        
         const trackingId = await getNextTrackingId(db);
+        
+        // Create timeline message
+        let timelineMessage = 'Issue reported by citizen';
+        if (user?.isPremium) {
+          timelineMessage = '⭐ Premium user issue - Auto-boosted to High Priority';
+        }
+        
         const result = await issuesCol.insertOne({
           ...req.body,
           priority,
@@ -612,24 +740,30 @@ async function run() {
           reportedBy: email,
           reporterName: user?.name || '',
           reporterPhoto: user?.photo || '',
+          reporterIsPremium: user?.isPremium || false,
           upvotes: 0,
           upvotedBy: [],
           createdAt: new Date(),
-          status: 'Pending',
+          status: user?.isPremium ? 'In Progress' : 'Pending', // Premium issues go directly to In Progress
           timeline: [{
             trackingId,
-            status: 'Pending',
-            message: 'Issue reported by citizen',
+            status: user?.isPremium ? 'In Progress' : 'Pending',
+            message: timelineMessage,
             updatedBy: email,
             updaterName: user?.name || email,
             role: 'citizen',
             timestamp: new Date(),
           }],
         });
+        
         res.send(result);
-      } catch { res.status(500).send({ message: 'Failed to create issue' }); }
+      } catch (err) { 
+        console.error(err);
+        res.status(500).send({ message: 'Failed to create issue' }); 
+      }
     });
 
+    
     app.get('/issues', async (req, res) => {
       try {
         const { status, priority, category, search, limit, skip, reportedBy, assignedTo } = req.query;
@@ -644,15 +778,51 @@ async function run() {
           { category: { $regex: search, $options: 'i' } },
           { location: { $regex: search, $options: 'i' } },
         ];
+        
+        // Set default limit and skip
+        const limitNum = parseInt(limit) || 10;
+        const skipNum = parseInt(skip) || 0;
+        
         const result = await issuesCol.aggregate([
           { $match: query },
-          { $addFields: { priorityOrder: { $cond: [{ $eq: ['$priority', 'High'] }, 1, 2] } } },
-          { $sort: { priorityOrder: 1, _id: -1 } },
-          { $skip: Number(skip) || 0 },
-          { $limit: Number(limit) || 10 },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'reportedBy',
+              foreignField: 'email',
+              as: 'reporterInfo'
+            }
+          },
+          {
+            $addFields: {
+              reporterIsPremium: { 
+                $cond: {
+                  if: { $gt: [{ $size: '$reporterInfo' }, 0] },
+                  then: { $arrayElemAt: ['$reporterInfo.isPremium', 0] },
+                  else: false
+                }
+              },
+              reporterName: {
+                $cond: {
+                  if: { $gt: [{ $size: '$reporterInfo' }, 0] },
+                  then: { $arrayElemAt: ['$reporterInfo.name', 0] },
+                  else: ''
+                }
+              },
+              priorityOrder: { $cond: [{ $eq: ['$priority', 'High'] }, 1, 2] }
+            }
+          },
+          { $sort: { priorityOrder: 1, createdAt: -1 } },
+          { $skip: skipNum },
+          { $limit: limitNum },
+          { $project: { reporterInfo: 0 } }
         ]).toArray();
+        
         res.send(result);
-      } catch { res.status(500).send({ message: 'Failed to fetch issues' }); }
+      } catch (err) { 
+        console.error('Issues fetch error:', err);
+        res.status(500).send({ message: 'Failed to fetch issues', error: err.message }); 
+      }
     });
 
     app.get('/issues/resolved', async (req, res) => {
